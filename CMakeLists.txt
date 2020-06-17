@@ -19,10 +19,7 @@ option(BUILD_TESTS
 	"Build test programs and test targets"
 	OFF
 )
-option(BUILD_EXAMPLES
-	"Build example programs which will help in learning VKFL"
-	ON
-)
+
 
 
 # No reason not to compile using multiple cores.
@@ -61,9 +58,5 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 	if(BUILD_TESTS)
 		include(CTest)
 		add_subdirectory("Tests")
-	endif()
-
-	if(BUILD_EXAMPLES)
-		add_subdirectory("Examples")
 	endif()
 endif()
