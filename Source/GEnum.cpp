@@ -7,6 +7,37 @@
 #include <Windows.h>
 #endif
 
+
+
+std::string		current_file	= "";
+size_t			current_line	= 0;
+void UpdateLineCounter(
+	const std::string	&	str,
+	size_t					current_position
+)
+{
+	current_line	= 1;
+	size_t offset	= 0;
+	while( true ) {
+		auto found_pos = str.find( "\n", offset );
+		if( found_pos != str.npos ) {
+			if( offset < current_position ) {
+				// Update counter
+				++current_line;
+				offset = found_pos + 1;
+			} else {
+				// Got to the current position
+				return;
+			}
+		} else {
+			// eof
+			return;
+		}
+	}
+}
+
+
+
 int GenerateEnumNames(
 	const Options	&	options
 )
@@ -35,6 +66,12 @@ void PrintError(
 	std::string_view			msg
 )
 {
+	std::stringstream ss;
+	ss	<< "Error while parsing file!\n"
+		<< "  File: " << current_file << "\n"
+		<< "  Line: " << current_line << "\n"
+		<< "  Message: " << msg;
+
 	#ifdef _WIN32
 	HANDLE console = GetStdHandle( STD_OUTPUT_HANDLE );
 	CONSOLE_SCREEN_BUFFER_INFO console_info;
@@ -42,12 +79,12 @@ void PrintError(
 	WORD original = console_info.wAttributes;
 
 	SetConsoleTextAttribute( console, 4 << 4 | 15 );
-	std::cout << msg;
+	std::cout << ss.str();
 	SetConsoleTextAttribute( console, original );
 	std::cout << std::endl;
 	#else
 
-	std::cout << msg << std::endl;
+	std::cout << ss.str() << std::endl;
 	#endif
 
 	exit( 1 );
@@ -263,6 +300,9 @@ void ParseFile(
 		std::cout << "Parsing file: " << path << "\n";
 	}
 
+	current_file	= path.string();
+	current_line	= 0;
+
 	// Read entire file into a string
 	std::string file_str;
 	{
@@ -272,6 +312,7 @@ void ParseFile(
 		file_str.reserve( file_size );
 		file_stream.seekg( 0 );
 		std::string buffer;
+		current_line = 1;
 		while( std::getline( file_stream, buffer ) )
 		{
 			file_str += buffer;
@@ -863,7 +904,7 @@ FindResult FindFirstOf(
 
 
 FindResult FindNextNonWhitespaceCharacter(
-	const std::string				&	str,
+	const std::string			&	str,
 	size_t							position
 )
 {
@@ -875,6 +916,7 @@ FindResult FindNextNonWhitespaceCharacter(
 			ret.size	= 1;
 			ret.option	= SIZE_MAX;
 			ret.word	= str[ i ];
+			UpdateLineCounter( str, position );
 			return ret;
 		}
 	}
@@ -900,6 +942,7 @@ FindResult FindNextNonWhitespaceString(
 					ret.size	= end - begin;
 					ret.option	= SIZE_MAX;
 					ret.word	= str.substr( begin, ret.size );
+					UpdateLineCounter( str, position );
 					return ret;
 				}
 			}
@@ -909,6 +952,7 @@ FindResult FindNextNonWhitespaceString(
 			ret.size	= std::size( str ) - begin;
 			ret.option	= SIZE_MAX;
 			ret.word	= str.substr( begin, ret.size );
+			UpdateLineCounter( str, position );
 			return ret;
 		}
 	}
@@ -937,6 +981,7 @@ FindResult FindNextCName(
 						result.size		= end - begin;
 						result.option	= SIZE_MAX;
 						result.word		= str.substr( begin, result.size );
+						UpdateLineCounter( str, position );
 						return result;
 					}
 				}
@@ -946,6 +991,7 @@ FindResult FindNextCName(
 				result.size		= std::size( str ) - begin;
 				result.option	= SIZE_MAX;
 				result.word		= str.substr( begin );
+				UpdateLineCounter( str, position );
 				return result;
 			}
 		}
