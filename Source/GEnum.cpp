@@ -187,6 +187,7 @@ void ParseArguments(
 		if( arg == "-D" ) {
 			options.debug_prints = true;
 		}
+		++it;
 	}
 }
 
