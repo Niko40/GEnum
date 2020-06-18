@@ -512,9 +512,11 @@ void ProcessEnums(
 			case 3:	// }
 			{
 				if( current_bracket_level == 0 ) PrintError( "Bracket level mismatch." );
-				auto p = namespace_stack.back();
-				if( p.first == current_bracket_level ) {
-					namespace_stack.pop_back();
+				if( !namespace_stack.empty() ) {
+					auto p = namespace_stack.back();
+					if( p.first == current_bracket_level ) {
+						namespace_stack.pop_back();
+					}
 				}
 				--current_bracket_level;
 			}
