@@ -60,3 +60,10 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 		add_subdirectory("Tests")
 	endif()
 endif()
+
+
+
+install(
+	TARGETS GEnum
+	DESTINATION "${CMAKE_SOURCE_DIR}/Install"
+)
