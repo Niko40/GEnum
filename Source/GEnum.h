@@ -12,6 +12,7 @@ namespace fs = std::filesystem;
 
 struct Options
 {
+	fs::path						exe_path;
 	fs::path						parse_folder;
 	fs::path						header_output;
 	fs::path						source_output;
@@ -28,6 +29,13 @@ struct Options
 	bool							generate					= false;
 };
 
+struct InputInfo
+{
+	fs::path						file_path;
+	std::string						str;
+	std::vector<bool>				valid;
+	size_t							cursor;
+};
 struct OutputInfo
 {
 	fs::path						header_path;
@@ -110,30 +118,22 @@ void ParseFile(
 	OutputInfo		&	output_info
 );
 
-// Removes comments from the given string, the string is modified in place
-void RemoveComments(
+void ValidateFileCharacters(
 	const Options		&	options,
-	std::string			&	str
-);
-
-// Removes character arrays from the string, the string is modified in place
-void RemoveCharacterArrays(
-	const Options		&	options,
-	std::string			&	str
+	InputInfo			&	input_info
 );
 
 // Process enums
 void ProcessEnums(
 	const Options		&	options,
-	const std::string	&	str,
+	InputInfo			&	input_info,
 	OutputInfo			&	output_info
 );
 
 void ProcessSingleEnum(
 	const Options										&	options,
 	const std::vector<std::pair<size_t, std::string>>	&	namespace_stack,
-	size_t												&	position,			// Modified
-	const std::string									&	str,
+	InputInfo											&	input_info,
 	OutputInfo											&	output_info
 );
 
@@ -148,22 +148,26 @@ void CreateEnumConverterFunction(
 // Find first occurance of text from a list of possibilities
 FindResult FindFirstOf(
 	const std::string					&	str,
+	const std::vector<bool>				&	valid,
 	size_t									position,
 	const std::vector<std::string_view>	&	possibilities
 );
 
 FindResult FindNextNonWhitespaceCharacter(
 	const std::string					&	str,
+	const std::vector<bool>				&	valid,
 	size_t									position
 );
 
 FindResult FindNextNonWhitespaceString(
 	const  std::string					&	str,
+	const std::vector<bool>				&	valid,
 	size_t									position
 );
 
 FindResult FindNextCName(
 	const std::string					&	str,
+	const std::vector<bool>				&	valid,
 	size_t									position
 );
 
