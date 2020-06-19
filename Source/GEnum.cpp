@@ -4,6 +4,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX 1
 #include <Windows.h>
 #endif
 
@@ -296,9 +297,7 @@ void ParseFile(
 	OutputInfo		&	output_info
 )
 {
-	if( options.debug_prints ) {
-		std::cout << "Parsing file: " << path << "\n";
-	}
+	std::cout << "Parsing file: " << path << "\n";
 
 	current_file	= path.string();
 	current_line	= 0;
@@ -320,15 +319,15 @@ void ParseFile(
 		}
 	}
 
-	RemoveComments(
-		options,
-		file_str
-	);
+//	RemoveComments(
+//		options,
+//		file_str
+//	);
 
-	RemoveCharacterArrays(
-		options,
-		file_str
-	);
+//	RemoveCharacterArrays(
+//		options,
+//		file_str
+//	);
 
 	ProcessEnums(
 		options,
@@ -880,6 +879,124 @@ void CreateEnumConverterFunction(
 
 
 
+// Custom function to get the next character from a string which
+// can automatically filters out comments and character arrays
+// or convert them into spaces for white space detection.
+// automatically updates current position if skipping
+// comments/arrays.
+char GetCharacter(
+	const std::string			&	str,
+	size_t						&	current_position,
+	bool							skip_comments_and_character_arrays,
+	bool							comments_and_character_arrays_as_spaces
+)
+{
+	SO... Scrap this;
+	// Changing approach here a bit, instead of trying to steer around character
+	// arrays and comments, a better solution would probably be to create a bool
+	// vector where each vector slot would tell if the character on specific
+	// locations of the string is valid or should be discarded.
+	bool keep_looking = true;
+	while( keep_looking ) {
+		keep_looking = false;
+
+		if( current_position >= std::size( str ) ) return NULL;
+
+		if( str[ current_position ] == '/' ) {
+			if( current_position + 1 < std::size( str ) ) {
+				if( str[ current_position + 1 ] == '/' ) {
+					if( skip_comments_and_character_arrays ) {
+						// This is a comment line, go to next line
+						current_position	+= 2;
+						current_position	= str.find( "\n", current_position ) + 1;
+						keep_looking		= true;
+					} else {
+						if( comments_and_character_arrays_as_spaces ) {
+							return ' ';
+						} else {
+							return str[ current_position ];
+						}
+					}
+				} else if( str[ current_position + 1 ] == '*' ) {
+					if( skip_comments_and_character_arrays ) {
+						// This is a comment block, go to block end
+						current_position	+= 2;
+						current_position	= str.find( "*/", current_position ) + 2;
+						keep_looking		= true;
+					} else {
+						if( comments_and_character_arrays_as_spaces ) {
+							return ' ';
+						} else {
+							return str[ current_position ];
+						}
+					}
+				}
+			}
+		} else if( str[ current_position ] == '\"' ) {
+			if( current_position == 0 || str[ current_position - 1 ] != '\\' ) {
+				if( skip_comments_and_character_arrays ) {
+					// This is a character array.
+					current_position		+= 1;
+					current_position		= str.find( "\"", current_position ) + 1;
+					keep_looking			= true;
+				} else {
+					if( comments_and_character_arrays_as_spaces ) {
+						return ' ';
+					} else {
+						return str[ current_position ];
+					}
+				}
+			}
+		}
+	}
+
+	return str[ current_position ];
+}
+
+// Find next occurance of another string within
+// the first and return it's position.
+size_t StringFind(
+	const std::string			&	str,
+	size_t							current_position,
+	std::string_view				looking_for
+)
+{
+	size_t highest = 0;
+	while( true ) {
+		auto c = GetCharacter(
+			str,
+			current_position,
+			true,
+			true
+		);
+
+		if( current_position > highest ) {
+			highest = current_position;
+		}
+
+		if( current_position == 7891 ) {
+			std::cout << "test";
+		}
+
+		if( current_position >= std::size( str ) ) {
+			return SIZE_MAX;
+		}
+
+		for( size_t i = 0; i < std::size( looking_for ); ++i ) {
+			if( str[ i + current_position ] != looking_for[ i ] ) {
+				break;
+			}
+			if( i == std::size( looking_for ) - 1 ) {
+				return current_position;
+			}
+		}
+
+		++current_position;
+	}
+}
+
+
+
 FindResult FindFirstOf(
 	const std::string					&	str,
 	size_t									position,
@@ -889,7 +1006,7 @@ FindResult FindFirstOf(
 	FindResult result {};
 
 	for( size_t i = 0; i < std::size( possibilities ); ++i ) {
-		auto begin = str.find( possibilities[ i ], position );
+		auto begin = StringFind( str, position, possibilities[ i ] );
 		if( begin < result.begin ) {
 			result.begin	= begin;
 			result.end		= std::size( possibilities[ i ] ) + begin;
@@ -908,19 +1025,79 @@ FindResult FindNextNonWhitespaceCharacter(
 	size_t							position
 )
 {
-	for( size_t i = position; i < std::size( str ); ++i ) {
-		if( str[ i ] != NULL && !isspace( str[ i ] ) ) {
+	while( true ) {
+		auto c = GetCharacter(
+			str,
+			position,
+			true,
+			true
+		);
+		if( position >= std::size( str ) ) break;
+
+		if( c != NULL && !isspace( c ) ) {
 			FindResult ret;
-			ret.begin	= i;
-			ret.end		= i + 1;
+			ret.begin	= position;
+			ret.end		= position + 1;
 			ret.size	= 1;
 			ret.option	= SIZE_MAX;
-			ret.word	= str[ i ];
+			ret.word	= c;
 			UpdateLineCounter( str, position );
 			return ret;
 		}
+		++position;
 	}
 	return {};
+}
+
+
+
+std::string FilterOurCommentsAndCharacterArraysFromString(
+	std::string		str
+)
+{
+	// Remove all \" marks in advance, makes it easier to deal with the rest.
+	while( true ) {
+		auto found_pos = str.find( "\\\"" );
+		if( found_pos == str.npos ) break;
+
+		str.erase( found_pos, 2 );
+	}
+
+	while( true ) {
+		auto com_line	= str.find( "//" );
+		auto com_block	= str.find( "/*" );
+		auto char_block	= str.find( "\"" );
+		size_t score	= SIZE_MAX;
+		size_t sel		= SIZE_MAX;
+
+		if( com_line != str.npos || com_block != str.npos || char_block != str.npos ) {
+			// Remove something
+			if( com_line < score ) {
+				score	= com_line;
+				sel		= 0;
+			}
+			if( com_block < score ) {
+				score	= com_line;
+				sel		= 1;
+			}
+			if( char_block < score ) {
+				score	= char_block;
+				sel		= 2;
+			}
+		} else {
+			return str;
+		}
+
+		if( sel == 0 ) {
+			str.erase( score, str.find( "\n" ) );
+		} else if( sel == 1 ) {
+			str.erase( score, str.find( "*/" ) );
+		} else if( sel == 2 ) {
+			str.erase( score, str.find( "\"" ) );
+		} else {
+			PrintError( "Internal parsing error." );
+		}
+	}
 }
 
 
@@ -930,31 +1107,46 @@ FindResult FindNextNonWhitespaceString(
 	size_t						position
 )
 {
-	// Loop until we find non-whitespace character
-	for( size_t begin = position; begin < std::size( str ); ++begin ) {
-		if( str[ begin ] != NULL && !isspace( str[ begin ] ) ) {
-			// Found non-whitespace character, now loop until we find a whitespace character.
-			for( size_t end = begin; end < std::size( str ); ++end ) {
-				if( ( str[ end ] == NULL ) || isspace( str[ end ] ) ) {
-					FindResult ret;
-					ret.begin	= begin;
-					ret.end		= end;
-					ret.size	= end - begin;
-					ret.option	= SIZE_MAX;
-					ret.word	= str.substr( begin, ret.size );
-					UpdateLineCounter( str, position );
-					return ret;
-				}
-			}
+	auto result = FindNextNonWhitespaceCharacter(
+		str,
+		position
+	);
+	if( result.begin == SIZE_MAX ) return {};
+
+	auto begin = result.begin;
+
+	while( true ) {
+		auto c = GetCharacter(
+			str,
+			position,
+			false,
+			true
+		);
+		if( c == NULL || isspace( c ) ) {
+			auto end = position;
+			FindResult ret;
+			ret.begin	= begin;
+			ret.end		= end;
+			ret.size	= end - begin;
+			ret.option	= SIZE_MAX;
+			// Between begin and end might still be comments or character
+			// arrays even if we remove those from the returned string.
+			ret.word	= str.substr( begin, ret.size );
+			UpdateLineCounter( str, position );
+			return ret;
+		} else if( position >= std::size( str ) ) {
 			FindResult ret;
 			ret.begin	= begin;
 			ret.end		= std::size( str );
 			ret.size	= std::size( str ) - begin;
 			ret.option	= SIZE_MAX;
+			// Between begin and end might still be comments or character
+			// arrays even if we remove those from the returned string.
 			ret.word	= str.substr( begin, ret.size );
 			UpdateLineCounter( str, position );
 			return ret;
 		}
+		++position;
 	}
 	return {};
 }
@@ -966,37 +1158,50 @@ FindResult FindNextCName(
 	size_t							position
 )
 {
-	for( size_t begin = position; begin < std::size( str ); ++begin ) {
-		bool is_first_character = true;
-		if( str[ begin ] != NULL && !isspace( int( str[ begin ] ) ) ) {
-			if( IsValidCNameCharacter( int( str[ begin ] ), is_first_character ) ) {
-				is_first_character = false;
-				for( size_t end = begin; end < std::size( str ); ++end ) {
-					if( str[ end ] == NULL ||
-						isspace( int( str[ end ] ) ) ||
-						!IsValidCNameCharacter( int( str[ end ] ), is_first_character ) ) {
-						FindResult		result;
-						result.begin	= begin;
-						result.end		= end;
-						result.size		= end - begin;
-						result.option	= SIZE_MAX;
-						result.word		= str.substr( begin, result.size );
-						UpdateLineCounter( str, position );
-						return result;
-					}
-				}
-				FindResult		result;
-				result.begin	= begin;
-				result.end		= std::size( str );
-				result.size		= std::size( str ) - begin;
-				result.option	= SIZE_MAX;
-				result.word		= str.substr( begin );
-				UpdateLineCounter( str, position );
-				return result;
-			}
+	size_t begin	= SIZE_MAX;
+	size_t end		= SIZE_MAX;
+
+	// Find beginning.
+	while( true ) {
+		auto c = GetCharacter(
+			str,
+			position,
+			true,
+			true
+		);
+		if( position >= std::size( str ) ) return {};
+
+		if( IsValidCNameCharacter( c, true ) ) {
+			begin = position;
+			break;
 		}
+		++position;
+	};
+
+	// Find end.
+	while( true ) {
+		auto c = GetCharacter(
+			str,
+			position,
+			false,
+			true
+		);
+
+		if( position >= std::size( str ) || !IsValidCNameCharacter( c, false ) ) {
+			end = position;
+			break;
+		}
+		++position;
 	}
-	return {};
+
+	FindResult		result;
+	result.begin	= begin;
+	result.end		= end;
+	result.size		= end - begin;
+	result.option	= SIZE_MAX;
+	result.word		= str.substr( begin, result.size );
+	UpdateLineCounter( str, position );
+	return result;
 }
 
 
